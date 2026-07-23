@@ -7,6 +7,8 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/AlexKay28/clickcast/ci.yml?branch=main)](https://github.com/AlexKay28/clickcast/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 
+![clickcast touring worldsight-weld.vercel.app](docs/demo.gif)
+
 > **Not to be confused with [vercel-labs/webreel](https://github.com/vercel-labs/webreel)** — that's a TypeScript tool for authoring polished demo videos. `clickcast` is a Python tool aimed primarily at *AI agents* that need a visual modality onto a live web UI, and secondarily at humans who want reproducible demo reels.
 
 `clickcast` drives a real browser through a website — clicking buttons, toggling views, switching
@@ -26,10 +28,6 @@ or hand it a small YAML **scenario** for a scripted, repeatable walkthrough.
 ```bash
 clickcast auto https://worldsight-weld.vercel.app --out worldsight.gif
 ```
-
-<p align="center">
-  <img src="docs/demo.gif" alt="clickcast touring worldsight-weld.vercel.app" width="720">
-</p>
 
 ```
 ✔ Launching chromium (1280×800)
