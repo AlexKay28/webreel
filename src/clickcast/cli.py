@@ -1,7 +1,7 @@
 """Clickcast CLI — Typer app wiring every command promised in the README.
 
 Command modules stay thin — each dispatches into `clickcast.core`,
-`clickcast.scenario`, `clickcast.discover`, or `clickcast.encode`. Business
+`clickcast.scenario`, `clickcast.discovery`, or `clickcast.encode`. Business
 logic lives in those subsystems, not here.
 """
 
@@ -22,7 +22,7 @@ from clickcast import __version__
 from clickcast.capture import Recorder
 from clickcast.core.actions import ClickStep, GotoStep, ScrollStep, execute
 from clickcast.core.session import Session
-from clickcast.discover import Element, discover
+from clickcast.discovery import Element, discover
 from clickcast.encode import encode
 from clickcast.scenario import ScenarioError, load
 from clickcast.scenario import run as run_scenario

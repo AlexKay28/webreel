@@ -6,8 +6,8 @@ import pytest
 import pytest_asyncio
 
 from clickcast.core.session import Session
-from clickcast.discover import Element, discover
-from clickcast.discover.discover import _dedup, _pick_selector, _score
+from clickcast.discovery import Element, discover
+from clickcast.discovery.discovery import _dedup, _pick_selector, _score
 
 
 class TestScore:

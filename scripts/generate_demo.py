@@ -21,7 +21,7 @@ from pathlib import Path
 from clickcast.capture import Recorder
 from clickcast.core.actions import ClickStep, GotoStep, ScrollStep, execute
 from clickcast.core.session import Session
-from clickcast.discover import discover
+from clickcast.discovery import discover
 from clickcast.encode import encode
 
 log = logging.getLogger("clickcast.demo")
