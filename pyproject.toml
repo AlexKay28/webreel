@@ -1,0 +1,115 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "webreel"
+version = "0.1.0.dev0"
+description = "Drive a browser through a website and hand back a reel + AI-readable feedback sidecar."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+authors = [{ name = "Alex Kay" }]
+keywords = ["playwright", "screenshot", "gif", "browser", "automation", "ai", "agent"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Testing",
+    "Topic :: Multimedia :: Graphics",
+]
+dependencies = [
+    "playwright>=1.44",
+    "Pillow>=10.0",
+    "imageio[ffmpeg]>=2.34",
+    "PyYAML>=6.0",
+    "typer>=0.12",
+    "rich>=13.7",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "platformdirs>=4.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=5.0",
+    "ruff>=0.5",
+    "mypy>=1.10",
+    "pre-commit>=3.7",
+    "types-PyYAML",
+]
+
+[project.scripts]
+webreel = "webreel.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/AlexKay28/webreel"
+Issues = "https://github.com/AlexKay28/webreel/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/webreel"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/webreel", "README.md", "LICENSE", "pyproject.toml"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W",   # pycodestyle + pyflakes
+    "I",             # isort
+    "B",             # bugbear
+    "UP",            # pyupgrade
+    "SIM",           # simplifications
+    "RUF",           # ruff-specific
+]
+ignore = ["E501"]  # line-length handled by formatter
+
+[tool.ruff.lint.flake8-bugbear]
+# Typer's public API idiom is `arg: T = typer.Argument(...)` / `typer.Option(...)`.
+extend-immutable-calls = ["typer.Argument", "typer.Option"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+files = ["src/webreel"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+
+[[tool.mypy.overrides]]
+module = ["imageio.*", "PIL.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra --strict-markers"
+testpaths = ["tests"]
+markers = [
+    "unit: fast tests with no browser",
+    "integration: tests that launch a browser against the local fixture site",
+    "slow: encoding + full-tour reels",
+]
+asyncio_mode = "auto"
+
+[tool.coverage.run]
+source = ["src/webreel"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
