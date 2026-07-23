@@ -378,13 +378,14 @@ reel = (
     .scroll(to="footer")
 )
 
-reel.save("worldsight.gif")          # or .save("tour.mp4", quality=8)
+reel.save("worldsight.gif")  # or .save("tour.mp4", quality=8)
 ```
 
 Discovery is available programmatically too:
 
 ```python
 from clickcast import discover
+
 elements = discover("https://example.com", interactive=True)
 ```
 
