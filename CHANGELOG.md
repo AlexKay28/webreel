@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **`auto` go_back no longer hangs on WebSocket / HMR sites.** The go_back
+  restore step introduced in the previous entry used `wait_until="networkidle"`,
+  which hung indefinitely on sites that keep WebSockets / SSE / dev-server
+  HMR channels open (react.dev burned 30+ minutes of CI). Switched to
+  `wait_until="domcontentloaded"` with a hard 5-second `timeout`. DOM-ready
+  is enough — we're just returning to a page we already know how to select
+  elements on.
+- **`--max-steps` is now a global click budget**, not per-page. Old semantics
+  meant `--max-steps=25 --max-pages=5` could fire 125 clicks (25 × 5) and
+  overrun even a modest CI budget. New: 25 total clicks across the whole
+  tour, whichever pages they land on. Default bumped to 15 (roughly matches
+  the previous per-page default × a typical page count).
 - **`auto` BFS no longer starves on nav-heavy sites.** The previous
   click-loop `break`-on-first-nav meant one useless click (e.g. clicking
   the site logo, which nav's to an already-visited URL) exited the loop

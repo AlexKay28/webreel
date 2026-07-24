@@ -227,8 +227,15 @@ def auto(
     url: Annotated[str, typer.Argument(help="Target URL.")],
     out: OutOpt = "reel.gif",
     max_steps: Annotated[
-        int, typer.Option("--max-steps", "-N", help="Cap on how many elements to click per page.")
-    ] = 10,
+        int,
+        typer.Option(
+            "--max-steps",
+            "-N",
+            help=(
+                "Total click budget across the whole tour (sum of clicks on every visited page)."
+            ),
+        ),
+    ] = 15,
     max_pages: Annotated[
         int,
         typer.Option(
@@ -288,16 +295,17 @@ async def _explore_page(
     url: str,
     dwell: float,
     initial_wait: float,
-    max_steps: int,
+    click_budget: int,
     step_index: int,
     step_annotations: dict[int, StepAnnotation],
     page_label: str,
-) -> tuple[int, list[str]]:
-    """Goto ``url``, discover, click up to ``max_steps`` elements, scroll.
+) -> tuple[int, int, list[str]]:
+    """Goto ``url``, discover, click up to ``click_budget`` elements, scroll.
 
-    Returns ``(next_step_index, discovered_urls)`` — ``discovered_urls`` are
+    Returns ``(next_step_index, clicks_used, discovered_urls)``. ``clicks_used``
+    lets the caller decrement its global budget; ``discovered_urls`` are the
     same-origin destinations noticed while clicking (dedup happens in the
-    caller, not here).
+    caller).
     """
     discovered_urls: list[str] = []
 
@@ -306,7 +314,7 @@ async def _explore_page(
     result = await execute(goto, sess)
     if not result.ok:
         typer.secho(f"  skipped {url}: {result.error}", fg=typer.colors.YELLOW, err=True)
-        return step_index, discovered_urls
+        return step_index, 0, discovered_urls
     if initial_wait > 0:
         await sess.wait(initial_wait)
     frames_goto = await rec.post_action(sess, result, goto)
@@ -315,13 +323,15 @@ async def _explore_page(
         await builder.record_step(index=step_index, step=goto, result=result, frames=frames_goto)
     step_index += 1
 
-    elements = await discover(sess, limit=max_steps * 2)
+    # Discover a generous pool so we don't starve when max_steps is small;
+    # the click budget still caps how many we actually invoke.
+    elements = await discover(sess, limit=max(click_budget * 2, 20))
     if builder and step_index == 1:
-        builder.set_discovered(elements[:max_steps])
+        builder.set_discovered(elements[:click_budget])
 
     clicked = 0
     for element in elements:
-        if clicked >= max_steps:
+        if clicked >= click_budget:
             break
         step = ClickStep(
             selector=element.selector,
@@ -347,13 +357,18 @@ async def _explore_page(
         # the page so we can keep clicking the remaining discovered elements.
         # Same-origin nav: page.go_back() and continue. Cross-origin nav:
         # bail (we shouldn't drive further on someone else's site).
+        #
+        # `wait_until="domcontentloaded"` + 5s hard timeout: networkidle can
+        # hang forever on sites with WebSockets / SSE / dev-server HMR (react.dev
+        # was our smoking gun — the fix in #56 made the demo run 30+ minutes).
+        # DOM-ready is enough since we're just going back to re-select elements.
         url_after = sess.page.url
         if url_after != url_before:
             discovered_urls.append(url_after)
             if not is_same_origin(url_after, url_before):
                 break
             try:
-                await sess.page.go_back(wait_until="networkidle")
+                await sess.page.go_back(wait_until="domcontentloaded", timeout=5000)
             except Exception:
                 # Some sites (chained redirects, popstate handlers) refuse
                 # go_back cleanly. Give up on further clicks on this page.
@@ -373,7 +388,7 @@ async def _explore_page(
         await builder.record_step(index=step_index, step=scroll, result=r, frames=frames_scroll)
     step_index += 1
 
-    return step_index, discovered_urls
+    return step_index, clicked, discovered_urls
 
 
 async def _do_auto(
@@ -410,8 +425,9 @@ async def _do_auto(
             visited: set[str] = set()
             queue: deque[str] = deque([url])
             pages_visited = 0
+            clicks_remaining = max_steps
 
-            while queue and pages_visited < max_pages:
+            while queue and pages_visited < max_pages and clicks_remaining > 0:
                 current = queue.popleft()
                 key = normalize_url(current)
                 if key in visited:
@@ -420,18 +436,19 @@ async def _do_auto(
                 pages_visited += 1
                 page_label = f"page {pages_visited}/{max_pages}"
 
-                step_index, discovered = await _explore_page(
+                step_index, clicks_used, discovered = await _explore_page(
                     sess=sess,
                     rec=rec,
                     builder=builder,
                     url=current,
                     dwell=dwell,
                     initial_wait=initial_wait,
-                    max_steps=max_steps,
+                    click_budget=clicks_remaining,
                     step_index=step_index,
                     step_annotations=step_annotations,
                     page_label=page_label,
                 )
+                clicks_remaining -= clicks_used
 
                 # First page must have discovered elements; downstream pages
                 # can be scroll-only (a legitimate destination).

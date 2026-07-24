@@ -20,8 +20,8 @@ on:
         default: "12"
         required: true
       max-clicks:
-        description: Max discovered elements to click per page
-        default: "3"
+        description: Total click budget across the whole tour
+        default: "15"
         required: true
       max-pages:
         description: Max pages the tour visits (BFS, same-origin, 1 level deep)
@@ -58,7 +58,7 @@ jobs:
       URL: ${{ inputs.url || 'https://worldsight-weld.vercel.app/' }}
       VIEWPORT: ${{ inputs.viewport || '1280x800' }}
       FPS: ${{ inputs.fps || '12' }}
-      MAX_CLICKS: ${{ inputs['max-clicks'] || '3' }}
+      MAX_CLICKS: ${{ inputs['max-clicks'] || '15' }}
       MAX_PAGES: ${{ inputs['max-pages'] || '3' }}
       INITIAL_WAIT: ${{ inputs['initial-wait'] || '4' }}
       DWELL: ${{ inputs.dwell || '0.5' }}
