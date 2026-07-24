@@ -232,8 +232,7 @@ def auto(
             "--max-steps",
             "-N",
             help=(
-                "Total click budget across the whole tour "
-                "(sum of clicks on every visited page)."
+                "Total click budget across the whole tour (sum of clicks on every visited page)."
             ),
         ),
     ] = 15,
