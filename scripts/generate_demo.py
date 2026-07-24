@@ -37,13 +37,15 @@ async def _tour_one_page(
     url: str,
     dwell: float,
     initial_wait: float,
-    max_clicks: int,
+    click_budget: int,
     step_index: int,
     step_annotations: dict[int, StepAnnotation],
     page_label: str,
-) -> tuple[int, list[str]]:
-    """Goto, discover, click up to N, scroll. Returns the updated step_index
-    and any URLs the browser navigated to during clicks."""
+) -> tuple[int, int, list[str]]:
+    """Goto, discover, click up to `click_budget`, scroll.
+
+    Returns `(next_step_index, clicks_used, discovered_urls)`.
+    """
     discovered_urls: list[str] = []
 
     goto = GotoStep(url=url, wait="networkidle", dwell=dwell)
@@ -51,7 +53,7 @@ async def _tour_one_page(
     result = await execute(goto, sess)
     if not result.ok:
         log.warning("skipped %s: %s", url, result.error)
-        return step_index, discovered_urls
+        return step_index, 0, discovered_urls
     if initial_wait > 0:
         await sess.wait(initial_wait)
         log.info("held %.1fs after networkidle for hydration", initial_wait)
@@ -59,17 +61,17 @@ async def _tour_one_page(
     step_annotations[step_index] = StepAnnotation(label=f"{page_label} · open")
     step_index += 1
 
-    elements = await discover(sess, limit=max_clicks * 2)
+    elements = await discover(sess, limit=max(click_budget * 2, 20))
     log.info(
         "%s discovered %d elements: %s",
         page_label,
         len(elements),
-        [f"{e.role}:{e.text[:24]}" for e in elements[:max_clicks]],
+        [f"{e.role}:{e.text[:24]}" for e in elements[:click_budget]],
     )
 
     clicked = 0
     for element in elements:
-        if clicked >= max_clicks:
+        if clicked >= click_budget:
             break
         step = ClickStep(
             selector=element.selector,
@@ -89,13 +91,16 @@ async def _tour_one_page(
             clicked += 1
         step_index += 1
 
+        # Post-click nav: `domcontentloaded` + hard 5s timeout — `networkidle`
+        # hung the react.dev demo for 30+ minutes because HMR/WebSockets never
+        # let the network go idle.
         url_after = sess.page.url
         if url_after != url_before:
             discovered_urls.append(url_after)
             if not is_same_origin(url_after, url_before):
                 break
             try:
-                await sess.page.go_back(wait_until="networkidle")
+                await sess.page.go_back(wait_until="domcontentloaded", timeout=5000)
             except Exception:
                 break
             if sess.page.url != url_before:
@@ -109,7 +114,7 @@ async def _tour_one_page(
     step_annotations[step_index] = StepAnnotation(label=f"{page_label} · scroll")
     step_index += 1
 
-    return step_index, discovered_urls
+    return step_index, clicked, discovered_urls
 
 
 async def _run(
@@ -136,8 +141,9 @@ async def _run(
             visited: set[str] = set()
             queue: deque[str] = deque([url])
             pages_visited = 0
+            clicks_remaining = max_clicks
 
-            while queue and pages_visited < max_pages:
+            while queue and pages_visited < max_pages and clicks_remaining > 0:
                 current = queue.popleft()
                 key = normalize_url(current)
                 if key in visited:
@@ -146,17 +152,18 @@ async def _run(
                 pages_visited += 1
                 page_label = f"page {pages_visited}/{max_pages}"
 
-                step_index, discovered = await _tour_one_page(
+                step_index, clicks_used, discovered = await _tour_one_page(
                     sess=sess,
                     rec=rec,
                     url=current,
                     dwell=dwell,
                     initial_wait=initial_wait,
-                    max_clicks=max_clicks,
+                    click_budget=clicks_remaining,
                     step_index=step_index,
                     step_annotations=step_annotations,
                     page_label=page_label,
                 )
+                clicks_remaining -= clicks_used
                 if pages_visited == 1 and step_index == 1:
                     raise RuntimeError("auto-discovery returned zero elements on start page")
 
@@ -196,7 +203,12 @@ def main() -> None:
         default=0.5,
         help="Seconds to hold each captured screen. Keep short (<= 0.5s) so the reel stays snappy.",
     )
-    parser.add_argument("--max-clicks", type=int, default=3)
+    parser.add_argument(
+        "--max-clicks",
+        type=int,
+        default=15,
+        help="Total click budget across the whole tour (sum across every visited page).",
+    )
     parser.add_argument(
         "--max-pages",
         type=int,

@@ -40,6 +40,7 @@ class _FakePage:
     def __init__(self) -> None:
         self._url_stack: list[str] = [""]
         self.go_back_history: list[str] = []
+        self.go_back_kwargs: list[dict[str, Any]] = []
 
     @property
     def url(self) -> str:
@@ -49,8 +50,9 @@ class _FakePage:
     def url(self, new: str) -> None:
         self._url_stack.append(new)
 
-    async def go_back(self, **_kwargs: Any) -> None:
+    async def go_back(self, **kwargs: Any) -> None:
         self.go_back_history.append(self._url_stack[-1])
+        self.go_back_kwargs.append(kwargs)
         if len(self._url_stack) > 1:
             self._url_stack.pop()
 
@@ -209,7 +211,7 @@ class TestBfsQueue:
             await _do_auto(
                 url="https://x.com/",
                 out="reel.gif",
-                max_steps=2,
+                max_steps=10,  # global budget; must be enough to also visit /about
                 max_pages=5,
                 dwell=0.0,
                 initial_wait=0.0,
@@ -301,7 +303,7 @@ class TestBfsQueue:
             await _do_auto(
                 url="https://x.com/",
                 out="reel.gif",
-                max_steps=1,
+                max_steps=10,  # global budget; enough to also visit /about
                 max_pages=5,
                 dwell=0.0,
                 initial_wait=0.0,
@@ -421,6 +423,104 @@ class TestBfsQueue:
         assert fake_sess.page.go_back_history == [], "cross-origin nav should NOT trigger go_back"
         # Only one click landed before we bailed out.
         assert clicked["n"] == 1
+
+    @pytest.mark.asyncio
+    async def test_go_back_uses_domcontentloaded_with_hard_timeout(
+        self, _stub_environment: dict[str, MagicMock]
+    ) -> None:
+        """Regression: PR #56 originally used `wait_until="networkidle"`, which
+        hangs on sites with WebSockets / SSE / HMR (react.dev burned 30+ min
+        of CI). Fix in PR #74: `domcontentloaded` + 5s hard timeout."""
+        fake_sess: _FakeSession = _stub_environment["session"]
+        click_counter = {"n": 0}
+
+        async def _fake_execute(step: Any, _sess: Any) -> MagicMock:
+            cls = step.__class__.__name__
+            if cls == "GotoStep":
+                fake_sess.page.url = step.url
+                return _make_result()
+            if cls == "ClickStep":
+                click_counter["n"] += 1
+                if click_counter["n"] == 1:
+                    fake_sess.page.url = "https://x.com/inner"
+            return _make_result()
+
+        with (
+            patch("clickcast.cli.execute", side_effect=_fake_execute),
+            patch(
+                "clickcast.cli.discover",
+                AsyncMock(return_value=[_make_element("Nav1"), _make_element("Nav2")]),
+            ),
+        ):
+            await _do_auto(
+                url="https://x.com/",
+                out="reel.gif",
+                max_steps=5,
+                max_pages=1,  # cap so we only exercise page 1 (which does go_back)
+                dwell=0.0,
+                initial_wait=0.0,
+                session_kwargs={"engine": "chromium"},
+                fps=12,
+                format_=None,
+                quality=8,
+                loop=0,
+                no_sidecar=True,
+            )
+        assert len(fake_sess.page.go_back_kwargs) >= 1, "expected at least one go_back call"
+        # Every go_back must pass wait_until="domcontentloaded" and a timeout.
+        for kw in fake_sess.page.go_back_kwargs:
+            assert kw.get("wait_until") == "domcontentloaded", (
+                f"expected wait_until='domcontentloaded', got {kw}"
+            )
+            assert isinstance(kw.get("timeout"), int) and kw["timeout"] <= 5000, (
+                f"expected hard timeout <= 5000ms, got {kw}"
+            )
+
+    @pytest.mark.asyncio
+    async def test_max_steps_is_a_global_click_budget(
+        self, _stub_environment: dict[str, MagicMock]
+    ) -> None:
+        """`--max-steps` used to be per-page, so a `max-pages=3 max-steps=2`
+        tour could click 6 times total. Now it's global: at most `max-steps`
+        clicks across the whole tour, no matter how many pages."""
+        fake_sess: _FakeSession = _stub_environment["session"]
+        click_counter = {"n": 0}
+
+        async def _fake_execute(step: Any, _sess: Any) -> MagicMock:
+            cls = step.__class__.__name__
+            if cls == "GotoStep":
+                fake_sess.page.url = step.url
+                return _make_result()
+            if cls == "ClickStep":
+                click_counter["n"] += 1
+                # Every click navigates to a new URL (so BFS wants to keep going)
+                fake_sess.page.url = f"https://x.com/page-{click_counter['n']}"
+            return _make_result()
+
+        with (
+            patch("clickcast.cli.execute", side_effect=_fake_execute),
+            patch(
+                "clickcast.cli.discover",
+                AsyncMock(return_value=[_make_element(f"e{i}") for i in range(10)]),
+            ),
+        ):
+            await _do_auto(
+                url="https://x.com/",
+                out="reel.gif",
+                max_steps=3,  # global cap: total clicks across all pages
+                max_pages=5,  # generous — budget should stop us before this
+                dwell=0.0,
+                initial_wait=0.0,
+                session_kwargs={"engine": "chromium"},
+                fps=12,
+                format_=None,
+                quality=8,
+                loop=0,
+                no_sidecar=True,
+            )
+        assert click_counter["n"] == 3, (
+            f"expected exactly 3 clicks (global max_steps), got {click_counter['n']}"
+        )
 
     @pytest.mark.asyncio
     async def test_max_pages_zero_dies(self, _stub_environment: dict[str, MagicMock]) -> None:
