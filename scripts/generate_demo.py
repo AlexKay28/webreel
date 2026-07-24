@@ -183,7 +183,12 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=Path("docs/demo.gif"))
     parser.add_argument("--viewport", default="1280x800")
     parser.add_argument("--fps", type=int, default=12)
-    parser.add_argument("--dwell", type=float, default=1.2)
+    parser.add_argument(
+        "--dwell",
+        type=float,
+        default=0.5,
+        help="Seconds to hold each captured screen. Keep short (<= 0.5s) so the reel stays snappy.",
+    )
     parser.add_argument("--max-clicks", type=int, default=3)
     parser.add_argument(
         "--max-pages",

@@ -31,6 +31,10 @@ on:
         description: Seconds to hold after networkidle before first click
         default: "4"
         required: true
+      dwell:
+        description: Seconds to hold each screen (keep <= 0.5 so the reel stays snappy)
+        default: "0.5"
+        required: true
   workflow_run:
     workflows: ["Publish release (TestPyPI → PyPI → GitHub release)"]
     types: [completed]
@@ -57,6 +61,7 @@ jobs:
       MAX_CLICKS: ${{ inputs['max-clicks'] || '3' }}
       MAX_PAGES: ${{ inputs['max-pages'] || '3' }}
       INITIAL_WAIT: ${{ inputs['initial-wait'] || '4' }}
+      DWELL: ${{ inputs.dwell || '0.5' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -90,6 +95,7 @@ jobs:
             --max-clicks "$MAX_CLICKS" \
             --max-pages "$MAX_PAGES" \
             --initial-wait "$INITIAL_WAIT" \
+            --dwell "$DWELL" \
             --keep-frames debug-frames \
             --out docs/demo.gif \
             --verbose
