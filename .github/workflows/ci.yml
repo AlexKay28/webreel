@@ -3,7 +3,13 @@ name: ci
 on:
   push:
     branches: [main]
+    paths-ignore: &docs-ignore
+      - '**.md'
+      - 'LICENSE'
+      - '.gitignore'
+      - 'docs/*.md'          # explicit — `docs/scenarios/*.yml` still triggers CI
   pull_request:
+    paths-ignore: *docs-ignore
 
 concurrency:
   group: ci-${{ github.ref }}
